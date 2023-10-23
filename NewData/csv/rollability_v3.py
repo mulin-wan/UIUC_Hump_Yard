@@ -1,21 +1,6 @@
 import pandas as pd
+import numpy as np
 
-# Define the dtype of several columns
-column_dypes_retarder = {
-    'AAR_POOL_ID': str, 
-    'KEY_TRN_CD': str,
-    'WHL_SCRB_CD': str,
-    'PLN_DNGR_CD': str,
-    'EXIT_WDETR_FAIL_NME': str
-}
-
-column_dtype_switch = {
-    'AAR_POOL_ID': str, 
-    'KEY_TRN_CD': str,
-    'DOT_113_RUL_CD': str,
-    'WHL_SCRB_CD': str,
-    'PLN_DNGR_CD': str
-}
 # Load CSV Files of 2023-02-20
 cut = pd.read_csv('TULSA-2023-02-20-Month-Cut-Test.csv', dtype = str)
 retarder = pd.read_csv('TULSA-2023-02-20-Month-Retarder-Test.csv', dtype = str)
@@ -52,9 +37,38 @@ def get_car_cut_by_id(car_cuts, target_cut_id):
             return car_cut
     return None
 
-def retarder_enter_kinetic_energy(car_cut):
-    enter_speed = car_cut.retarder['CUT_FRNT_VEL_QTY'] # fps
+def retarder_kinetic_energy(car_cut):
+    enter_speed = float(car_cut.retarder['CUT_FRNT_VEL_QTY'].values[0]) # fps
     exit_speed = car_cut.retarder['ACTL_EXIT_SPD_RT'] #fps
+    mass = int(car_cut.cut['GRS_TONS'].values[0]) # gross tons
+    enter_kinetic_energy = 0.5 * mass * enter_speed ** 2
+    exit_kinetic_energy  = 0.5 * mass * exit_speed ** 2
+
+    return enter_kinetic_energy, exit_kinetic_energy
+
+def retarder_potential_energy(car_cut):
+    mass = int(car_cut.cut['GRS_TONS'].values[0])
+    retarder_name = car_cut.retarder['DVC_NME'].values[0]
+
+    # Filter the route DataFrame for rows containing {retarder_name}NWDL or {retarder_name}NWDR and have non-null Elevation
+    nwdl_route_data = route[(route['Device'] == f"{retarder_name}NWDL") & (route['Elevation'].notnull())]
+    nwdr_route_data = route[(route['Device'] == f"{retarder_name}NWDR") & (route['Elevation'].notnull())]
+
+    # If there are multiple rows with non-null Elevation, take the first one for each
+    nwdl_elevation = nwdl_route_data['Elevation'].iloc[0] if not nwdl_route_data.empty else None
+    nwdr_elevation = nwdr_route_data['Elevation'].iloc[0] if not nwdr_route_data.empty else None
+
+    # Check if both elevations are available
+    if nwdl_elevation is not None and nwdr_elevation is not None:
+        # If both elevations are the same or different, calculate the average
+        elevation = (float(nwdl_elevation) + float(nwdr_elevation)) / 2
+        potential_energy = mass * 9.81 * elevation  # Assuming g = 9.81 m/s^2 for potential energy calculation
+        return potential_energy
+    else:
+        # If either elevation is missing, raise an exception
+        raise ValueError(f"Elevation values for {retarder_name}NWDL or {retarder_name}NWDR are missing!")
+
 # Example usage:
 car_cut_example = get_car_cut_by_id(car_cuts, "1518942")
-print(car_cut_example.retarder)
+# print(retarder_kinetic_energy(car_cut_example))
+print(retarder_potential_energy(car_cut_example))
