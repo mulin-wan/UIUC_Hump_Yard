@@ -54,7 +54,7 @@ def retarder_kinetic_energy(car_cut):
             'enter_kinetic_energy': enter_kinetic_energy,
             'exit_kinetic_energy': exit_kinetic_energy
         })
-    print(kinetic_energies)
+
     return kinetic_energies
 
 def retarder_potential_energy(car_cut):
@@ -93,7 +93,60 @@ def retarder_potential_energy(car_cut):
 
     return potential_energies
 
+def switch_kinetic_energy(car_cut):
+    mass = int(car_cut.cut['GRS_TONS'].values[0]) # gross tons
+    kinetic_energies = []
+    # Iterate through each row in car_cut.switch
+    for index, row in car_cut.switch.iterrows():
+        front_speed = float(row['CUT_FRNT_VEL_QTY'])  # fps
+        rear_speed = float(row['REAR_VEL_QTY'])   # fps
+        device_name = row['DVC_NME']
+
+        front_kinetic_energy = 0.5 * mass * front_speed ** 2
+        rear_kinetic_energy  = 0.5 * mass * rear_speed ** 2
+
+        kinetic_energies.append({
+            'device_name': device_name,
+            'front_kinetic_energy': front_kinetic_energy,
+            'rear_kinetic_energy': rear_kinetic_energy
+        })
+
+    return kinetic_energies
+
+def switch_potential_energy(car_cut):
+    mass = int(car_cut.cut['GRS_TONS'].values[0]) 
+    potential_energies = []
+
+    # Iterate through each row in car_cut.switch
+    for index, row in car_cut.switch.iterrows():
+        device_name = row['DVC_NME']
+
+        # Filter the route DataFrame for rows containing {device_name}SWD and have non-null Elevation
+        find_switch_elevation = route[(route['Device'] == f"{device_name}SWD") & (route['Elevation'].notnull())]
+
+        # If there are multiple rows with non-null Elevation, take the first one for each
+        switch_elevation = find_switch_elevation['Elevation'].iloc[0] if not find_switch_elevation.empty else None
+
+        # Check if both elevations are available
+        if switch_elevation is not None:
+            # If both elevations are the same or different, calculate the average
+            potential_energy = mass * 9.81 * float(switch_elevation)  # Assuming g = 9.81 m/s^2 for potential energy calculation
+            
+            potential_energies.append({
+                'device_name': device_name,
+                'potential_energy': potential_energy
+            })
+
+        else:
+            # If either elevation is missing, append an error message for this specific retarder
+            potential_energies.append({
+                'device_name': device_name,
+                'error': f"Elevation values for {device_name}SWD is missing!"
+            })
+
+    return potential_energies
+
 # Example usage:
 car_cut_example = get_car_cut_by_id(car_cuts, "1518942")
-# print(retarder_kinetic_energy(car_cut_example))
-print(retarder_potential_energy(car_cut_example))
+
+print(switch_potential_energy(car_cut_example))
