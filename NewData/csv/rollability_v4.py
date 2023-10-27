@@ -48,6 +48,9 @@ def retarder_kinetic_energy(car_cut):
         enter_kinetic_energy = 0.5 * mass * enter_speed ** 2
         exit_kinetic_energy  = 0.5 * mass * exit_speed ** 2
 
+        enter_kinetic_energy = round(enter_kinetic_energy, 4)
+        exit_kinetic_energy = round(exit_kinetic_energy, 4)
+
         kinetic_energies.append({
             'device_name': device_name,
             'enter_kinetic_energy': enter_kinetic_energy,
@@ -56,6 +59,23 @@ def retarder_kinetic_energy(car_cut):
 
     return kinetic_energies
 
+def get_elevations(device_name):
+    if pd.isna(device_name):
+        return []
+    # Filter for rows in the route dataframe that start with the device name
+    filtered_data = route[route['Device'].str.startswith(device_name)]
+    
+    # Extract rows with non-null latitude and elevation
+    valid_rows = filtered_data.dropna(subset=['Latitude', 'Elevation'])
+    
+    if not valid_rows.empty:
+        min_lat_row = valid_rows[valid_rows['Latitude'] == valid_rows['Latitude'].min()]
+        max_lat_row = valid_rows[valid_rows['Latitude'] == valid_rows['Latitude'].max()]
+        
+        return [min_lat_row['Elevation'].values[0], max_lat_row['Elevation'].values[0]]
+    else:
+        return []
+
 def retarder_potential_energy(car_cut):
     mass = int(car_cut.cut['GRS_TONS'].fillna(0).values[0])
     potential_energies = []
@@ -63,31 +83,65 @@ def retarder_potential_energy(car_cut):
     # Iterate through each row in car_cut.retarder
     for index, row in car_cut.retarder.iterrows():
         retarder_name = row['DVC_NME']
+        
+        # Get elevation data for entering and exiting points
+        elevations = get_elevations(retarder_name)
 
-        # Filter the route DataFrame for rows containing {retarder_name}NWDL or {retarder_name}NWDR and have non-null Elevation
-        nwdl_route_data = route[(route['Device'] == f"{retarder_name}NWDL") & (route['Elevation'].notnull())]
-        nwdr_route_data = route[(route['Device'] == f"{retarder_name}NWDR") & (route['Elevation'].notnull())]
+        if elevations:  # Ensure we have both entry and exit elevations
+            entering_elevation = elevations[0]
+            exiting_elevation = elevations[-1]
 
-        # If there are multiple rows with non-null Elevation, take the first one for each
-        nwdl_elevation = nwdl_route_data['Elevation'].iloc[0] if not nwdl_route_data.empty else None
-        nwdr_elevation = nwdr_route_data['Elevation'].iloc[0] if not nwdr_route_data.empty else None
+            entering_potential_energy = mass * 9.81 * entering_elevation
+            exiting_potential_energy = mass * 9.81 * exiting_elevation
 
-        # Check if both elevations are available
-        if nwdl_elevation is not None and nwdr_elevation is not None:
-            # If both elevations are the same or different, calculate the average
-            elevation = (float(nwdl_elevation) + float(nwdr_elevation)) / 2
-            potential_energy = mass * 9.81 * elevation  # Assuming g = 9.81 m/s^2 for potential energy calculation
-            
+            entering_potential_energy = round(entering_potential_energy, 4)
+            exiting_potential_energy = round(exiting_potential_energy, 4)
+
             potential_energies.append({
                 'device_name': retarder_name,
-                'potential_energy': potential_energy
+                'enter_potential_energy': entering_potential_energy,
+                'exit_potential_energy': exiting_potential_energy
             })
-
         else:
             # If either elevation is missing, append an error message for this specific retarder
             potential_energies.append({
                 'device_name': retarder_name,
-                'error': f"Elevation values for {retarder_name}NWDL or {retarder_name}NWDR are missing!"
+                'error': f"Elevation value for {retarder_name} is missing or incomplete!"
+            })
+
+    return potential_energies
+
+def switch_potential_energy(car_cut):
+    mass = int(car_cut.cut['GRS_TONS'].fillna(0).values[0])
+    potential_energies = []
+
+    # Iterate through each row in car_cut.switch
+    for index, row in car_cut.switch.iterrows():
+        switch_name = row['DVC_NME']
+        
+        # Get elevation data for entering and exiting points
+        elevations = get_elevations(switch_name)
+        
+        if elevations:  # Ensure we have both entry and exit elevations
+            entering_elevation = elevations[0]
+            exiting_elevation = elevations[1]
+
+            entering_potential_energy = mass * 9.81 * entering_elevation
+            exiting_potential_energy = mass * 9.81 * exiting_elevation
+            
+            entering_potential_energy = round(entering_potential_energy, 4)
+            exiting_potential_energy = round(exiting_potential_energy, 4)
+
+            potential_energies.append({
+                'device_name': switch_name,
+                'enter_potential_energy': entering_potential_energy,
+                'exit_potential_energy': exiting_potential_energy
+            })
+        else:
+            # If either elevation is missing, append an error message for this specific switch
+            potential_energies.append({
+                'device_name': switch_name,
+                'error': f"Elevation value for {switch_name} is missing or incomplete!"
             })
 
     return potential_energies
@@ -104,6 +158,9 @@ def switch_kinetic_energy(car_cut):
         front_kinetic_energy = 0.5 * mass * front_speed ** 2
         rear_kinetic_energy  = 0.5 * mass * rear_speed ** 2
 
+        front_kinetic_energy = round(front_kinetic_energy, 4)
+        rear_kinetic_energy = round(rear_kinetic_energy, 4)
+
         kinetic_energies.append({
             'device_name': device_name,
             'front_kinetic_energy': front_kinetic_energy,
@@ -111,39 +168,6 @@ def switch_kinetic_energy(car_cut):
         })
 
     return kinetic_energies
-
-def switch_potential_energy(car_cut):
-    mass = int(car_cut.cut['GRS_TONS'].fillna(0).values[0])
-    potential_energies = []
-
-    # Iterate through each row in car_cut.switch
-    for index, row in car_cut.switch.iterrows():
-        device_name = row['DVC_NME']
-
-        # Filter the route DataFrame for rows containing {device_name}SWD and have non-null Elevation
-        find_switch_elevation = route[(route['Device'] == f"{device_name}SWD") & (route['Elevation'].notnull())]
-
-        # If there are multiple rows with non-null Elevation, take the first one for each
-        switch_elevation = find_switch_elevation['Elevation'].iloc[0] if not find_switch_elevation.empty else None
-
-        # Check if both elevations are available
-        if switch_elevation is not None:
-            # If both elevations are the same or different, calculate the average
-            potential_energy = mass * 9.81 * float(switch_elevation)  # Assuming g = 9.81 m/s^2 for potential energy calculation
-            
-            potential_energies.append({
-                'device_name': device_name,
-                'potential_energy': potential_energy
-            })
-
-        else:
-            # If either elevation is missing, append an error message for this specific retarder
-            potential_energies.append({
-                'device_name': device_name,
-                'error': f"Elevation values for {device_name}SWD is missing!"
-            })
-
-    return potential_energies
 
 results = []
 
@@ -156,12 +180,20 @@ for car_cut in car_cuts:
 
     for data in potential_energy_retarder:
         if pd.notna(data['device_name']):
-            #print("car_cut", car_cut.cut_id, "data value:", data)
+            # For the retarder's entering potential energy
             results.append({
                 'cut_id': car_cut.cut_id,
                 'device_name': data['device_name'],
-                'energy_type': 'retarder_potential_energy',
-                'energy_value': data['potential_energy']
+                'energy_type': 'retarder_enter_potential_energy',
+                'energy_value': data['enter_potential_energy']
+            })
+            
+            # For the retarder's exiting potential energy
+            results.append({
+                'cut_id': car_cut.cut_id,
+                'device_name': data['device_name'],
+                'energy_type': 'retarder_exit_potential_energy',
+                'energy_value': data['exit_potential_energy']
             })
 
     for data in kinetic_energy_retarder:
@@ -181,11 +213,20 @@ for car_cut in car_cuts:
 
     for data in potential_energy_switch:
         if pd.notna(data['device_name']):
+            # For the switch's entering potential energy
             results.append({
                 'cut_id': car_cut.cut_id,
                 'device_name': data['device_name'],
-                'energy_type': 'switch_potential_energy',
-                'energy_value': data['potential_energy']
+                'energy_type': 'switch_enter_potential_energy',
+                'energy_value': data['enter_potential_energy']
+            })
+            
+            # For the switch's exiting potential energy
+            results.append({
+                'cut_id': car_cut.cut_id,
+                'device_name': data['device_name'],
+                'energy_type': 'switch_exit_potential_energy',
+                'energy_value': data['exit_potential_energy']
             })
 
     for data in kinetic_energy_switch:
@@ -205,4 +246,4 @@ for car_cut in car_cuts:
 
 # Convert the results list to a DataFrame and save it to a CSV
 df = pd.DataFrame(results)
-df.to_csv('TULSA-2023-02-20-Month-Energy.csv', index=False)
+df.to_csv('TULSA-2023-02-20-Month-Energy-v2.csv', index=False)
